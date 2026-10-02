@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend import models, schemas
 from backend.config import settings
-from backend.database import get_db
+from backend.database import get_db, set_tenant_context
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -43,6 +43,7 @@ def get_current_medico(token: str = Depends(oauth2_scheme), db: Session = Depend
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         medico_id: int = payload.get("sub")
+        organization_id: int = payload.get("org")
         if medico_id is None:
             raise credentials_exception
     except JWTError as exc:
@@ -50,6 +51,21 @@ def get_current_medico(token: str = Depends(oauth2_scheme), db: Session = Depend
     medico = db.query(models.Medico).filter(models.Medico.id == int(medico_id)).first()
     if medico is None or not medico.activo:
         raise credentials_exception
+    membership = (
+        db.query(models.Membresia)
+        .filter(
+            models.Membresia.medico_id == medico.id,
+            models.Membresia.organizacion_id == organization_id,
+            models.Membresia.activa.is_(True),
+        )
+        .first()
+    )
+    if not membership or not membership.organizacion.activa:
+        raise credentials_exception
+    set_tenant_context(db, organization_id)
+    medico.organization_id = organization_id
+    medico.organization_name = membership.organizacion.nombre
+    medico.role = membership.rol.value
     return medico
 
 
@@ -60,8 +76,28 @@ def login(request: schemas.LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Credenciales incorrectas")
     if not medico.activo:
         raise HTTPException(status_code=403, detail="Cuenta desactivada")
-    token = create_access_token({"sub": str(medico.id)})
-    return {"access_token": token, "token_type": "bearer", "medico": medico}
+    membership = (
+        db.query(models.Membresia)
+        .filter(models.Membresia.medico_id == medico.id, models.Membresia.activa.is_(True))
+        .order_by(models.Membresia.id)
+        .first()
+    )
+    if not membership or not membership.organizacion.activa:
+        raise HTTPException(
+            status_code=403, detail="El usuario no pertenece a una organización activa"
+        )
+    medico.organization_id = membership.organizacion_id
+    medico.organization_name = membership.organizacion.nombre
+    medico.role = membership.rol.value
+    token = create_access_token({"sub": str(medico.id), "org": membership.organizacion_id})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "medico": medico,
+        "organization_id": membership.organizacion_id,
+        "organization_name": membership.organizacion.nombre,
+        "role": membership.rol.value,
+    }
 
 
 @router.post("/register", response_model=schemas.MedicoOut)
@@ -80,6 +116,19 @@ def register(medico_data: schemas.MedicoCreate, db: Session = Depends(get_db)):
         telefono=medico_data.telefono,
     )
     db.add(nuevo)
+    db.flush()
+    organization = models.Organizacion(
+        nombre=f"Consultorio de {nuevo.nombre}", slug=f"consultorio-{nuevo.id}"
+    )
+    db.add(organization)
+    db.flush()
+    db.add(
+        models.Membresia(
+            organizacion_id=organization.id,
+            medico_id=nuevo.id,
+            rol=models.RolMembresia.admin,
+        )
+    )
     db.commit()
     db.refresh(nuevo)
     return nuevo

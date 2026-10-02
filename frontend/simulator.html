@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HIS Demo — Clínica San Gabriel</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f4f7fb;color:#1c2942}
+    header{height:64px;background:#fff;border-bottom:1px solid #dce4ef;display:flex;align-items:center;justify-content:space-between;padding:0 28px}
+    .brand{font-size:20px;font-weight:800;color:#1756a9}.user{font-size:13px;color:#607089}
+    .layout{display:grid;grid-template-columns:230px 1fr;min-height:calc(100vh - 64px)}
+    aside{background:#17365f;color:#dce9fb;padding:24px 16px}.nav{padding:11px 14px;border-radius:8px;margin-bottom:6px}.nav.active{background:#2e5d96;color:#fff}
+    main{padding:28px;max-width:1200px;width:100%;margin:auto}.crumb{font-size:13px;color:#708097;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:320px 1fr;gap:20px}.panel{background:#fff;border:1px solid #dce4ef;border-radius:12px;box-shadow:0 3px 14px #243e6810}
+    .panel h2,.panel h3{margin:0;padding:18px 20px;border-bottom:1px solid #e6ecf3}.patient{padding:14px 18px;border-bottom:1px solid #edf1f6;cursor:pointer}.patient:hover,.patient.active{background:#eef6ff}.patient strong{display:block}.muted{font-size:13px;color:#718198;margin-top:4px}
+    .content{padding:22px}.banner{display:flex;justify-content:space-between;gap:18px;align-items:start;border-bottom:1px solid #e7edf5;padding-bottom:20px}.name{font-size:24px;font-weight:800}.tags{display:flex;gap:8px;margin-top:10px}.tag{font-size:12px;padding:5px 9px;background:#eef3f8;border-radius:12px}.tag.alert{background:#ffebeb;color:#a62929}
+    .launch{border:0;border-radius:9px;background:#006fc9;color:white;padding:12px 18px;font-weight:700;cursor:pointer}.launch:hover{background:#005aa5}.launch:disabled{opacity:.5}
+    .section{margin-top:22px}.appointment{border-left:4px solid #2b77ca;background:#f6f9fd;padding:14px 16px;border-radius:7px;margin-top:10px}.note{padding:12px 0;border-bottom:1px solid #edf1f6}
+    .console{margin-top:20px;background:#132238;color:#b9d3f4;border-radius:10px;padding:14px;font:12px ui-monospace,monospace;min-height:80px}.console div{margin:5px 0}
+    @media(max-width:800px){.layout{grid-template-columns:1fr}aside{display:none}.grid{grid-template-columns:1fr}main{padding:16px}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">Clínica San Gabriel · HIS Demo</div><div class="user">Dra. Elena Vargas · Medicina General</div></header>
+  <div class="layout">
+    <aside><div class="nav">Inicio</div><div class="nav active">Pacientes</div><div class="nav">Agenda</div><div class="nav">Resultados</div><div class="nav">Facturación</div></aside>
+    <main>
+      <div class="crumb">Historia clínica / Paciente activo</div>
+      <div class="grid">
+        <section class="panel"><h3>Pacientes de hoy</h3><div id="patients"></div></section>
+        <section class="panel"><h2>Expediente clínico</h2><div class="content" id="record"><p>Selecciona un paciente.</p></div></section>
+      </div>
+      <div class="console" id="console"><div>Consola de interoperabilidad SMART/FHIR</div></div>
+    </main>
+  </div>
+  <script>
+    let context; let selected;
+    const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    function log(message){ const line=document.createElement('div');line.textContent=`${new Date().toLocaleTimeString()}  ${message}`;document.getElementById('console').appendChild(line); }
+    async function load(){
+      const response=await fetch('/simulator/api/context'); context=await response.json();
+      log('GET /simulator/fhir/metadata · FHIR R4'); renderPatients(); selectPatient(context.patients[0]?.id);
+    }
+    function renderPatients(){document.getElementById('patients').innerHTML=context.patients.map(p=>`<div class="patient ${p.id===selected?'active':''}" onclick="selectPatient(${p.id})"><strong>${escapeHTML(p.name)}</strong><div class="muted">${escapeHTML(p.document)}</div></div>`).join('');}
+    function selectPatient(id){selected=id;renderPatients();const p=context.patients.find(x=>x.id===id);const appointments=context.appointments.filter(x=>x.patient_id===id);const notes=context.notes.filter(x=>x.patient_id===id);const current=appointments[0];document.getElementById('record').innerHTML=`
+      <div class="banner"><div><div class="name">${escapeHTML(p.name)}</div><div class="muted">Documento: ${escapeHTML(p.document)} · Nacimiento: ${escapeHTML(p.birthDate||'—')}</div><div class="tags"><span class="tag alert">Alergias: ${escapeHTML(p.allergies||'No registradas')}</span><span class="tag">${escapeHTML(p.conditions||'Sin antecedentes')}</span></div></div><button class="launch" onclick="launch(${p.id},${current?.id||'null'})">Abrir Copiloto MediFlow</button></div>
+      <div class="section"><h3>Encuentro actual</h3>${current?`<div class="appointment"><strong>${escapeHTML(current.reason||'Consulta')}</strong><div class="muted">${new Date(current.date).toLocaleString()} · ${escapeHTML(current.status)}</div></div>`:'<p class="muted">Sin cita vinculada</p>'}</div>
+      <div class="section"><h3>Notas clínicas recibidas</h3>${notes.length?notes.map(n=>`<div class="note"><strong>${escapeHTML(n.assessment||'Nota SOAP')}</strong><div class="muted">Versión ${n.version} · ${escapeHTML(n.status)} · ${new Date(n.created_at).toLocaleString()}</div></div>`).join(''):'<p class="muted">Aún no hay notas para este paciente.</p>'}</div>`;}
+    async function launch(patientId,appointmentId){log(`SMART EHR Launch · Patient/${patientId}${appointmentId?` · Encounter/${appointmentId}`:''}`);const response=await fetch('/simulator/api/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({patient_id:patientId,appointment_id:appointmentId})});const data=await response.json();if(!response.ok){alert(data.detail);return;}log('Contexto opaco creado; abriendo MediFlow');location.href=data.launch_url;}
+    load().catch(error=>log(`ERROR ${error.message}`));
+  </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conectando MediFlow…</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card" style="text-align:center">
+      <div class="spinner" style="margin:0 auto 18px"></div>
+      <h2>Conectando con la historia clínica</h2>
+      <p class="text-muted mt-2" id="status">Validando el contexto SMART…</p>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script>
+    (async () => {
+      const code = new URLSearchParams(location.search).get("code");
+      history.replaceState({}, document.title, location.pathname);
+      if (!code) {
+        document.getElementById("status").textContent = "Código SMART ausente";
+        return;
+      }
+      try {
+        const data = await apiFetch("/api/smart/exchange", {
+          method: "POST",
+          body: JSON.stringify({ code })
+        });
+        setSession(data.access_token, data.medico);
+        const query = new URLSearchParams({ patient_id: data.patient_id });
+        if (data.encounter_id) query.set("cita", data.encounter_id);
+        location.replace(`/static/consulta.html?${query}`);
+      } catch (error) {
+        document.getElementById("status").textContent = error.message;
+      }
+    })();
+  </script>
+</body>
+</html>

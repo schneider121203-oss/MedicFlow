@@ -38,6 +38,9 @@ class MedicoOut(MedicoBase):
     id: int
     activo: bool
     created_at: datetime
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    role: Optional[str] = None
 
 
 class MedicoUpdate(BaseModel):
@@ -57,6 +60,9 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     medico: MedicoOut
+    organization_id: int
+    organization_name: str
+    role: str
 
 
 # ─── PACIENTE ─────────────────────────────────────────────
@@ -141,6 +147,43 @@ class HistoriaUpdate(BaseModel):
     a_analisis: Optional[str] = None
     p_plan: Optional[str] = None
     receta: Optional[List[MedicamentoReceta]] = None
+    motivo_cambio: Optional[str] = None
+
+
+class ConsentimientoCreate(BaseModel):
+    paciente_id: int
+    otorgado: bool
+    tipo: str = "grabacion_audio"
+    policy_version: str = "1.0"
+
+
+class ConsentimientoOut(ConsentimientoCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    medico_id: int
+    created_at: datetime
+
+
+class TrabajoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    paciente_id: int
+    cita_id: Optional[int] = None
+    estado: str
+    transcripcion: Optional[str] = None
+    resultado: Optional[dict] = None
+    error_code: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SmartExchangeRequest(BaseModel):
+    code: str
+
+
+class SmartExchangeResponse(Token):
+    patient_id: int
+    encounter_id: Optional[int] = None
 
 
 class HistoriaOut(BaseModel):
@@ -159,6 +202,9 @@ class HistoriaOut(BaseModel):
     pdf_path: Optional[str] = None
     created_at: datetime
     paciente: Optional[PacienteOut] = None
+    estado: str = "borrador"
+    version_actual: int = 1
+    signed_at: Optional[datetime] = None
 
 
 # ─── DASHBOARD ────────────────────────────────────────────

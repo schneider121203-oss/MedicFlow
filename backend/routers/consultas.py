@@ -13,6 +13,7 @@ from backend.config import settings
 from backend.database import get_db
 from backend.routers.auth import get_current_medico
 from backend.services import gemini_service, pdf_service, whisper_service
+from backend.services.audit_service import record_event
 
 router = APIRouter(prefix="/api/consultas", tags=["Consultas"])
 
@@ -92,7 +93,7 @@ async def guardar_consulta(
         db.query(models.Paciente)
         .filter(
             models.Paciente.id == paciente_id,
-            models.Paciente.medico_id == current.id,
+            models.Paciente.organizacion_id == current.organization_id,
             models.Paciente.activo.is_(True),
         )
         .first()
@@ -106,7 +107,7 @@ async def guardar_consulta(
             db.query(models.Cita)
             .filter(
                 models.Cita.id == cita_id,
-                models.Cita.medico_id == current.id,
+                models.Cita.organizacion_id == current.organization_id,
                 models.Cita.paciente_id == paciente_id,
             )
             .first()
@@ -115,6 +116,7 @@ async def guardar_consulta(
             raise HTTPException(status_code=404, detail="Cita no encontrada")
 
     historia = models.HistoriaClinica(
+        organizacion_id=current.organization_id,
         paciente_id=paciente_id,
         medico_id=current.id,
         cita_id=cita_id,
@@ -126,6 +128,28 @@ async def guardar_consulta(
         receta=receta,
     )
     db.add(historia)
+    db.flush()
+    db.add(
+        models.VersionHistoria(
+            organizacion_id=current.organization_id,
+            historia_id=historia.id,
+            version=1,
+            autor_id=current.id,
+            s_subjetivo=s_subjetivo,
+            o_objetivo=o_objetivo,
+            a_analisis=a_analisis,
+            p_plan=p_plan,
+            receta=receta,
+        )
+    )
+    record_event(
+        db,
+        organization_id=current.organization_id,
+        actor_id=current.id,
+        action="clinical_note.created",
+        resource_type="HistoriaClinica",
+        resource_id=historia.id,
+    )
     # Actualizar estado de la cita si aplica
     if cita:
         cita.estado = "completada"
@@ -144,7 +168,7 @@ def listar_historias(db: Session = Depends(get_db), current=Depends(get_current_
     return (
         db.query(models.HistoriaClinica)
         .options(joinedload(models.HistoriaClinica.paciente))
-        .filter(models.HistoriaClinica.medico_id == current.id)
+        .filter(models.HistoriaClinica.organizacion_id == current.organization_id)
         .order_by(models.HistoriaClinica.created_at.desc())
         .limit(50)
         .all()
@@ -159,7 +183,8 @@ def obtener_historia(
         db.query(models.HistoriaClinica)
         .options(joinedload(models.HistoriaClinica.paciente))
         .filter(
-            models.HistoriaClinica.id == historia_id, models.HistoriaClinica.medico_id == current.id
+            models.HistoriaClinica.id == historia_id,
+            models.HistoriaClinica.organizacion_id == current.organization_id,
         )
         .first()
     )
@@ -178,20 +203,114 @@ def actualizar_historia(
     h = (
         db.query(models.HistoriaClinica)
         .filter(
-            models.HistoriaClinica.id == historia_id, models.HistoriaClinica.medico_id == current.id
+            models.HistoriaClinica.id == historia_id,
+            models.HistoriaClinica.organizacion_id == current.organization_id,
         )
         .first()
     )
     if not h:
         raise HTTPException(status_code=404, detail="Historia no encontrada")
-    for key, value in data.model_dump(exclude_none=True).items():
+    if h.estado == models.EstadoNota.firmada:
+        raise HTTPException(status_code=409, detail="Una historia firmada requiere una enmienda")
+    values = data.model_dump(exclude_none=True)
+    motivo_cambio = values.pop("motivo_cambio", None)
+    for key, value in values.items():
         if key == "receta":
             setattr(h, key, [m.model_dump() for m in value])
         else:
             setattr(h, key, value)
+    h.version_actual += 1
+    db.add(
+        models.VersionHistoria(
+            organizacion_id=current.organization_id,
+            historia_id=h.id,
+            version=h.version_actual,
+            autor_id=current.id,
+            s_subjetivo=h.s_subjetivo,
+            o_objetivo=h.o_objetivo,
+            a_analisis=h.a_analisis,
+            p_plan=h.p_plan,
+            receta=h.receta,
+            motivo_cambio=motivo_cambio,
+        )
+    )
+    record_event(
+        db,
+        organization_id=current.organization_id,
+        actor_id=current.id,
+        action="clinical_note.updated",
+        resource_type="HistoriaClinica",
+        resource_id=h.id,
+        details={"version": h.version_actual},
+    )
     db.commit()
     db.refresh(h)
     return h
+
+
+@router.post("/{historia_id}/sign", response_model=schemas.HistoriaOut)
+def firmar_historia(
+    historia_id: int, db: Session = Depends(get_db), current=Depends(get_current_medico)
+):
+    h = (
+        db.query(models.HistoriaClinica)
+        .filter(
+            models.HistoriaClinica.id == historia_id,
+            models.HistoriaClinica.organizacion_id == current.organization_id,
+        )
+        .first()
+    )
+    if not h:
+        raise HTTPException(status_code=404, detail="Historia no encontrada")
+    if h.estado == models.EstadoNota.firmada:
+        return h
+    if not all([h.s_subjetivo, h.o_objetivo, h.a_analisis, h.p_plan]):
+        raise HTTPException(status_code=422, detail="La nota SOAP está incompleta")
+    from datetime import datetime, timezone
+
+    h.estado = models.EstadoNota.firmada
+    h.signed_at = datetime.now(timezone.utc)
+    record_event(
+        db,
+        organization_id=current.organization_id,
+        actor_id=current.id,
+        action="clinical_note.signed",
+        resource_type="HistoriaClinica",
+        resource_id=h.id,
+        details={"version": h.version_actual},
+    )
+    db.commit()
+    db.refresh(h)
+    return h
+
+
+@router.get("/{historia_id}/versions")
+def listar_versiones(
+    historia_id: int, db: Session = Depends(get_db), current=Depends(get_current_medico)
+):
+    history = db.query(models.HistoriaClinica).filter_by(id=historia_id).first()
+    if not history:
+        raise HTTPException(status_code=404, detail="Historia no encontrada")
+    versions = (
+        db.query(models.VersionHistoria)
+        .filter_by(historia_id=historia_id)
+        .order_by(models.VersionHistoria.version.desc())
+        .all()
+    )
+    return [
+        {
+            "version": version.version,
+            "author_id": version.autor_id,
+            "subjective": version.s_subjetivo,
+            "objective": version.o_objetivo,
+            "assessment": version.a_analisis,
+            "plan": version.p_plan,
+            "prescription": version.receta,
+            "change_reason": version.motivo_cambio,
+            "created_at": version.created_at,
+        }
+        for version in versions
+    ]
 
 
 @router.get("/{historia_id}/pdf")
@@ -202,7 +321,8 @@ def generar_pdf(
         db.query(models.HistoriaClinica)
         .options(joinedload(models.HistoriaClinica.paciente))
         .filter(
-            models.HistoriaClinica.id == historia_id, models.HistoriaClinica.medico_id == current.id
+            models.HistoriaClinica.id == historia_id,
+            models.HistoriaClinica.organizacion_id == current.organization_id,
         )
         .first()
     )

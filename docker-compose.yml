@@ -3,14 +3,16 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: mediflow
-      POSTGRES_USER: mediflow
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mediflow_local_only}
+      POSTGRES_USER: mediflow_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-mediflow_admin_local_only}
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD:-mediflow_local_only}
     ports:
       - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mediflow -d mediflow"]
+      test: ["CMD-SHELL", "pg_isready -U mediflow_admin -d mediflow"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -28,6 +30,16 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    build: .
+    entrypoint: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql://mediflow_admin:${POSTGRES_ADMIN_PASSWORD:-mediflow_admin_local_only}@postgres:5432/mediflow
+      SECRET_KEY: ${SECRET_KEY:?Define SECRET_KEY in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
@@ -39,28 +51,72 @@ services:
       - "9001:9001"
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
     build: .
     environment:
       ENVIRONMENT: development
-      DATABASE_URL: postgresql://mediflow:${POSTGRES_PASSWORD:-mediflow_local_only}@postgres:5432/mediflow
+      DATABASE_URL: postgresql://mediflow_app:${POSTGRES_PASSWORD:-mediflow_local_only}@postgres:5432/mediflow
       SECRET_KEY: ${SECRET_KEY:?Define SECRET_KEY in .env}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-3.5-flash}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_PROFILE: ${AWS_PROFILE:-}
+      AWS_SECRET_ID: ${AWS_SECRET_ID:-}
+      AWS_SECRET_JSON_KEY: ${AWS_SECRET_JSON_KEY:-}
       REGISTRATION_ENABLED: "false"
       CORS_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-mediflow}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-mediflow_local_secret}
+      S3_BUCKET: ${S3_BUCKET:-mediflow-dev}
     ports:
       - "8000:8000"
     volumes:
       - ./uploads:/app/uploads
+      - ${HOME}/.aws:/root/.aws:ro
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker:
+    build: .
+    entrypoint: ["celery", "-A", "backend.worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql://mediflow_app:${POSTGRES_PASSWORD:-mediflow_local_only}@postgres:5432/mediflow
+      SECRET_KEY: ${SECRET_KEY:?Define SECRET_KEY in .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-3.5-flash}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_PROFILE: ${AWS_PROFILE:-}
+      AWS_SECRET_ID: ${AWS_SECRET_ID:-}
+      AWS_SECRET_JSON_KEY: ${AWS_SECRET_JSON_KEY:-}
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-mediflow}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-mediflow_local_secret}
+      S3_BUCKET: ${S3_BUCKET:-mediflow-dev}
+    volumes:
+      - ${HOME}/.aws:/root/.aws:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
 volumes:

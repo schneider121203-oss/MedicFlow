@@ -23,7 +23,7 @@ def listar_citas(
     q = (
         db.query(models.Cita)
         .options(joinedload(models.Cita.paciente))
-        .filter(models.Cita.medico_id == current.id)
+        .filter(models.Cita.organizacion_id == current.organization_id)
     )
     if fecha:
         fecha_dt = datetime.strptime(fecha, "%Y-%m-%d").date()
@@ -43,7 +43,7 @@ def crear_cita(
         db.query(models.Paciente)
         .filter(
             models.Paciente.id == data.paciente_id,
-            models.Paciente.medico_id == current.id,
+            models.Paciente.organizacion_id == current.organization_id,
             models.Paciente.activo.is_(True),
         )
         .first()
@@ -51,6 +51,7 @@ def crear_cita(
     if not paciente:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
     cita = models.Cita(
+        organizacion_id=current.organization_id,
         paciente_id=data.paciente_id,
         medico_id=current.id,
         fecha_hora=data.fecha_hora,
@@ -74,7 +75,7 @@ def obtener_cita(cita_id: int, db: Session = Depends(get_db), current=Depends(ge
     cita = (
         db.query(models.Cita)
         .options(joinedload(models.Cita.paciente))
-        .filter(models.Cita.id == cita_id, models.Cita.medico_id == current.id)
+        .filter(models.Cita.id == cita_id, models.Cita.organizacion_id == current.organization_id)
         .first()
     )
     if not cita:
@@ -91,7 +92,7 @@ def actualizar_cita(
 ):
     cita = (
         db.query(models.Cita)
-        .filter(models.Cita.id == cita_id, models.Cita.medico_id == current.id)
+        .filter(models.Cita.id == cita_id, models.Cita.organizacion_id == current.organization_id)
         .first()
     )
     if not cita:
@@ -112,7 +113,7 @@ def actualizar_cita(
 def eliminar_cita(cita_id: int, db: Session = Depends(get_db), current=Depends(get_current_medico)):
     cita = (
         db.query(models.Cita)
-        .filter(models.Cita.id == cita_id, models.Cita.medico_id == current.id)
+        .filter(models.Cita.id == cita_id, models.Cita.organizacion_id == current.organization_id)
         .first()
     )
     if not cita:
@@ -128,7 +129,7 @@ def dashboard_stats(db: Session = Depends(get_db), current=Depends(get_current_m
     pacientes_total = (
         db.query(func.count(models.Paciente.id))
         .filter(
-            models.Paciente.medico_id == current.id,
+            models.Paciente.organizacion_id == current.organization_id,
             models.Paciente.activo.is_(True),
         )
         .scalar()
@@ -146,7 +147,7 @@ def dashboard_stats(db: Session = Depends(get_db), current=Depends(get_current_m
     consultas_mes = (
         db.query(func.count(models.HistoriaClinica.id))
         .filter(
-            models.HistoriaClinica.medico_id == current.id,
+            models.HistoriaClinica.organizacion_id == current.organization_id,
             func.extract("month", models.HistoriaClinica.created_at) == hoy.month,
             func.extract("year", models.HistoriaClinica.created_at) == hoy.year,
         )

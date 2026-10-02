@@ -1,11 +1,12 @@
 # MediFlow
 
-Prototipo de copiloto clínico que transcribe una consulta, genera un borrador SOAP
-revisable y conserva la historia clínica. La rama actual corresponde a la **fase 0**:
-seguridad y base reproducible previa a la integración SMART on FHIR.
+Copiloto clínico integrado que recibe contexto desde un sistema médico simulado,
+transcribe una consulta en segundo plano, genera un borrador SOAP revisable y devuelve
+la nota firmada al expediente. La rama actual incluye las fases 0 y 1.
 
-> No utilizar todavía con información real de pacientes. El flujo clínico, auditoría,
-> consentimiento y multi-tenancy completo se implementarán en la fase 1.
+> El sistema sigue siendo un piloto técnico. No utilizar con información real hasta
+> completar revisión legal, pruebas clínicas, hardening operativo y evaluación del
+> proveedor de IA.
 
 ## Requisitos
 
@@ -22,7 +23,14 @@ seguridad y base reproducible previa a la integración SMART on FHIR.
    openssl rand -hex 32
    ```
 
-2. Coloca el valor generado en `SECRET_KEY` y configura una clave **nueva** de Gemini.
+2. Coloca el valor generado en `SECRET_KEY`. Para usar AWS Secrets Manager configura:
+
+   ```dotenv
+   AWS_PROFILE=habitflow
+   AWS_REGION=us-east-1
+   AWS_SECRET_ID=prod/API/gemini
+   AWS_SECRET_JSON_KEY=gemini-api-habitflow
+   ```
 3. Arranca los servicios:
 
    ```bash
@@ -39,9 +47,19 @@ seguridad y base reproducible previa a la integración SMART on FHIR.
 
 5. Abre <http://localhost:8000>.
 
-La API ejecuta `alembic upgrade head` antes de arrancar. MinIO queda disponible en
-<http://localhost:9001> y Redis en el puerto `6379`; se usarán para los trabajos
-asíncronos de la fase 1.
+Para probar el modo integrado:
+
+```bash
+docker compose exec api python -m scripts.seed_simulator
+```
+
+Abre <http://localhost:8000/static/simulator.html>, selecciona un paciente y pulsa
+**Abrir Copiloto MediFlow**.
+
+Un job separado ejecuta `alembic upgrade head` con el rol administrador; la API y el
+worker usan un rol sin DDL y sometido a RLS. MinIO queda disponible en
+<http://localhost:9001> y Redis en el puerto `56379`. El worker Celery procesa audio e
+IA sin bloquear la API.
 
 ## Desarrollo sin Docker
 
@@ -63,13 +81,13 @@ python -m compileall -q backend scripts
 
 ## Migrar una base del prototipo anterior
 
-La migración inicial está pensada para una instalación limpia y añade pertenencia de
-pacientes al médico. Antes de conservar una base anterior:
+La migración de fase 1 conserva los datos de fase 0, crea una organización temporal por
+médico y migra pacientes, citas e historias. Antes de ejecutarla sobre una base existente:
 
 1. Realiza una copia de seguridad.
 2. Asigna cada paciente a un médico de manera explícita.
 3. Revisa documentos duplicados por médico.
-4. Genera una migración de transición; no ejecutes `stamp` o `upgrade` a ciegas.
+4. Prueba `alembic upgrade head` primero sobre una copia restaurada.
 
 Los audios y PDFs existentes permanecen en la máquina, pero `.gitignore` impide
 publicarlos por accidente.
@@ -78,10 +96,11 @@ publicarlos por accidente.
 
 - El registro público está deshabilitado por defecto.
 - CORS solo acepta orígenes configurados.
-- Los pacientes del prototipo están aislados por médico como barrera temporal.
+- Los datos clínicos están aislados por organización en la API y mediante RLS en PostgreSQL.
 - El borrado de pacientes es lógico.
 - Audios tienen lista de formatos y límite de tamaño.
 - PDFs requieren el token del usuario.
 - Los secretos no tienen valores de producción por defecto.
 
 Consulta [docs/phase-0.md](docs/phase-0.md) para el alcance y asuntos pendientes.
+La arquitectura de la integración está en [docs/phase-1.md](docs/phase-1.md).

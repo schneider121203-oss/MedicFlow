@@ -39,9 +39,10 @@ clínicos reales.
 3. No reutilizar el contenido actual de `.env` en producción.
 4. Confirmar que los audios y PDFs locales sean ficticios antes de conservarlos.
 
-## Límites deliberados
+## Elementos trasladados a fase 1
 
-Quedan para fase 1:
+Los siguientes elementos, inicialmente fuera de esta fase, ya están implementados en
+la migración y arquitectura de fase 1:
 
 - Organizaciones, sedes, membresías y RBAC.
 - PostgreSQL Row-Level Security.
@@ -50,8 +51,10 @@ Quedan para fase 1:
 - Historias versionadas, firma y enmiendas.
 - Auditoría append-only.
 - Redis/Celery y almacenamiento S3/MinIO efectivo.
-- Sustitución del JWT en `localStorage` por una sesión web más segura.
 - Validación clínica avanzada y trazabilidad de ejecuciones IA.
+
+El token del frontend aún utiliza `localStorage`; su sustitución por cookie HttpOnly u
+OAuth gestionado queda como hardening previo a producción.
 
 ## Criterios de aceptación de fase 0
 

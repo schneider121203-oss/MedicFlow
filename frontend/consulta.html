@@ -132,6 +132,11 @@
           </div>
         </div>
 
+        <label class="flex items-center gap-2 mt-4" style="align-items:flex-start">
+          <input type="checkbox" id="audio-consent" style="width:auto;margin-top:3px">
+          <span class="text-sm">Confirmo que el paciente fue informado y autorizó la grabación de esta consulta.</span>
+        </label>
+
         <div class="flex justify-between mt-4">
           <span class="text-muted text-sm" id="audio-ready-label"></span>
           <button class="btn btn-primary" id="btn-transcribir" onclick="transcribir()" disabled>
@@ -256,6 +261,7 @@
   let recordingSeconds = 0;
   let currentStep = 1;
   let savedHistoriaId = null;
+  let pendingSOAP = null;
 
   // Cargar pacientes
   async function loadPacientes() {
@@ -336,11 +342,14 @@
   function checkAudioReady() {
     const hasPaciente = document.getElementById("sel-paciente").value;
     const hasAudio = !!audioBlob;
-    document.getElementById("btn-transcribir").disabled = !(hasPaciente && hasAudio);
-    if (hasPaciente && hasAudio)
+    const hasConsent = document.getElementById("audio-consent").checked;
+    document.getElementById("btn-transcribir").disabled = !(hasPaciente && hasAudio && hasConsent);
+    if (hasPaciente && hasAudio && hasConsent)
       document.getElementById("audio-ready-label").textContent = "✅ Listo para transcribir";
+    else document.getElementById("audio-ready-label").textContent = "";
   }
   document.getElementById("sel-paciente").addEventListener("change", checkAudioReady);
+  document.getElementById("audio-consent").addEventListener("change", checkAudioReady);
 
   function goToStep(n) {
     document.querySelectorAll(".step-panel").forEach(p => p.classList.remove("active"));
@@ -371,13 +380,31 @@
     }, 800);
 
     try {
+      await apiFetch("/api/processing/consents", {
+        method: "POST",
+        body: JSON.stringify({ paciente_id: Number(pacienteId), otorgado: true })
+      });
       const form = new FormData();
       const filename = audioBlob.name || "grabacion.webm";
       form.append("audio", audioBlob, filename);
-      const data = await apiFetch("/api/consultas/transcribir", { method: "POST", body: form });
+      form.append("paciente_id", pacienteId);
+      if (citaParam) form.append("cita_id", citaParam);
+      const created = await apiFetch("/api/processing/jobs", { method: "POST", body: form });
+      let data = created;
+      const startedAt = Date.now();
+      while (!["listo", "fallido"].includes(data.estado)) {
+        if (Date.now() - startedAt > 20 * 60 * 1000) throw new Error("El procesamiento excedió el tiempo esperado");
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        data = await apiFetch(`/api/processing/jobs/${created.id}`);
+        const stage = data.estado === "estructurando" ? 92 : 55;
+        pct = Math.max(pct, stage);
+        document.getElementById("progress-fill").style.width = pct + "%";
+      }
+      if (data.estado === "fallido") throw new Error("El procesamiento falló; puedes reintentarlo");
       clearInterval(interval);
       document.getElementById("progress-fill").style.width = "100%";
       document.getElementById("transcripcion-text").value = data.transcripcion;
+      pendingSOAP = data.resultado;
       document.getElementById("whisper-thinking").style.display = "none";
       document.getElementById("transcripcion-result").style.display = "block";
       goToStep(2);
@@ -393,10 +420,11 @@
     if (!texto) { toast("La transcripción está vacía", "error"); return; }
     goToStep(3);
     try {
-      const data = await apiFetch("/api/consultas/generar-soap", {
-        method: "POST",
-        body: JSON.stringify({ transcripcion: texto })
-      });
+      const data = pendingSOAP || await apiFetch("/api/consultas/generar-soap", {
+          method: "POST",
+          body: JSON.stringify({ transcripcion: texto })
+        });
+      pendingSOAP = null;
       document.getElementById("soap-s").value = data.s_subjetivo;
       document.getElementById("soap-o").value = data.o_objetivo;
       document.getElementById("soap-a").value = data.a_analisis;
@@ -451,6 +479,7 @@
     try {
       const historia = await apiFetch("/api/consultas/", { method: "POST", body: form });
       savedHistoriaId = historia.id;
+      await apiFetch(`/api/consultas/${savedHistoriaId}/sign`, { method: "POST" });
       goToStep(5);
       document.getElementById("btn-download-pdf").onclick = () => openAuthenticatedPdf(savedHistoriaId);
       if (generarPDF) {

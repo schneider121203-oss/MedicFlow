@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from backend.config import settings
 from backend.database import engine
-from backend.routers import auth, citas, consultas, pacientes
+from backend.routers import auth, citas, consultas, organization, pacientes, processing, simulator
 
 
 @asynccontextmanager
@@ -38,6 +38,9 @@ app.include_router(auth.router)
 app.include_router(pacientes.router)
 app.include_router(citas.router)
 app.include_router(consultas.router)
+app.include_router(processing.router)
+app.include_router(simulator.router)
+app.include_router(organization.router)
 
 # Servir el frontend estático
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")

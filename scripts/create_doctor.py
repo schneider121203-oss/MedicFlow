@@ -4,7 +4,7 @@ import argparse
 import getpass
 
 from backend.database import SessionLocal
-from backend.models import Medico
+from backend.models import Medico, Membresia, Organizacion, RolMembresia
 from backend.routers.auth import hash_password
 
 
@@ -26,11 +26,24 @@ def main() -> None:
         if db.query(Medico).filter(Medico.email == args.email).first():
             raise SystemExit("Ya existe un médico con ese email")
         db.add(
-            Medico(
+            doctor := Medico(
                 nombre=args.nombre,
                 email=args.email,
                 especialidad=args.especialidad,
                 password_hash=hash_password(password),
+            )
+        )
+        db.flush()
+        organization = Organizacion(
+            nombre=f"Consultorio de {args.nombre}", slug=f"consultorio-{doctor.id}"
+        )
+        db.add(organization)
+        db.flush()
+        db.add(
+            Membresia(
+                organizacion_id=organization.id,
+                medico_id=doctor.id,
+                rol=RolMembresia.admin,
             )
         )
         db.commit()
