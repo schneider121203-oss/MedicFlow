@@ -1,0 +1,35 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime and sensitive clinical artifacts
+uploads/
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.webm
+*.pdf
+
+# Frontend and editor artifacts
+node_modules/
+dist/
+.DS_Store
+.idea/
+.vscode/
+
+# Local infrastructure
+minio-data/
+postgres-data/
+redis-data/

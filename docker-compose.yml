@@ -1,0 +1,69 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mediflow
+      POSTGRES_USER: mediflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mediflow_local_only}
+    ports:
+      - "${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediflow -d mediflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-56379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-mediflow}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-mediflow_local_secret}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  api:
+    build: .
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql://mediflow:${POSTGRES_PASSWORD:-mediflow_local_only}@postgres:5432/mediflow
+      SECRET_KEY: ${SECRET_KEY:?Define SECRET_KEY in .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      REGISTRATION_ENABLED: "false"
+      CORS_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-mediflow}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-mediflow_local_secret}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

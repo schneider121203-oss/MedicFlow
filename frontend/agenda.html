@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agenda — MediFlow</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-bottom: 24px; }
+    .day-cell {
+      text-align: center; padding: 10px 6px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); cursor: pointer; transition: var(--transition);
+      font-size: 13px;
+    }
+    .day-cell:hover { border-color: var(--border-hover); background: var(--cyan-dim); }
+    .day-cell.today { border-color: var(--cyan); color: var(--cyan); font-weight: 700; }
+    .day-cell.selected { background: var(--cyan); color: #000d1a; border-color: var(--cyan); font-weight: 700; }
+    .day-cell.has-citas::after { content: ''; display: block; width: 5px; height: 5px; background: var(--warning); border-radius: 50%; margin: 3px auto 0; }
+    .day-cell.other-month { opacity: 0.3; }
+    .day-name { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-dim); text-align: center; padding: 4px; }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">MediFlow</div><div class="logo-sub">Sistema Clínico Inteligente</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Principal</div>
+      <a href="dashboard.html" class="nav-item" data-page="dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="pacientes.html" class="nav-item" data-page="pacientes"><span class="icon">👥</span> Pacientes</a>
+      <a href="agenda.html" class="nav-item" data-page="agenda"><span class="icon">📅</span> Agenda</a>
+      <div class="nav-section-title">Clínico</div>
+      <a href="consulta.html" class="nav-item" data-page="consulta"><span class="icon">🎙️</span> Nueva Consulta</a>
+      <a href="historial.html" class="nav-item" data-page="historial"><span class="icon">📋</span> Historial</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="medico-card" id="sidebar-medico"></div>
+      <button class="btn btn-ghost btn-sm full-width mt-2" onclick="logout()">⬅ Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-title">📅 Agenda</div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" onclick="openNuevaCita()">➕ Nueva cita</button>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <div class="grid-2">
+        <!-- Calendario -->
+        <div class="card">
+          <div class="calendar-nav">
+            <button class="btn btn-ghost btn-sm" onclick="cambiarMes(-1)">‹</button>
+            <h2 id="mes-label"></h2>
+            <button class="btn btn-ghost btn-sm" onclick="cambiarMes(1)">›</button>
+          </div>
+          <div class="day-grid">
+            <div class="day-name">L</div><div class="day-name">M</div><div class="day-name">X</div>
+            <div class="day-name">J</div><div class="day-name">V</div><div class="day-name">S</div>
+            <div class="day-name">D</div>
+          </div>
+          <div class="day-grid" id="calendar-grid"></div>
+        </div>
+
+        <!-- Citas del día seleccionado -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title" id="dia-titulo">Citas del día</h2>
+            <button class="btn btn-ghost btn-sm" onclick="openNuevaCita()">+ Agregar</button>
+          </div>
+          <div id="citas-dia">
+            <div class="empty-state" style="padding:30px">
+              <div class="empty-icon" style="font-size:36px">📅</div>
+              <p>Selecciona un día</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- MODAL NUEVA CITA -->
+<div class="modal-overlay" id="modal-cita">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="cita-modal-title">Nueva Cita</h2>
+      <button class="modal-close" onclick="closeCita()">✕</button>
+    </div>
+    <form id="cita-form">
+      <input type="hidden" id="cita-id">
+      <div class="form-group">
+        <label>Paciente *</label>
+        <select id="c-paciente" required>
+          <option value="">Seleccionar paciente...</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fecha y hora *</label>
+          <input type="datetime-local" id="c-fecha" required>
+        </div>
+        <div class="form-group" id="c-estado-group" style="display:none">
+          <label>Estado</label>
+          <select id="c-estado">
+            <option value="programada">Programada</option>
+            <option value="en_consulta">En consulta</option>
+            <option value="completada">Completada</option>
+            <option value="cancelada">Cancelada</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Motivo de la cita</label>
+        <input type="text" id="c-motivo" placeholder="Control, consulta general, seguimiento...">
+      </div>
+      <div class="form-group">
+        <label>Notas adicionales</label>
+        <textarea id="c-notas" rows="2" placeholder="Indicaciones previas, preparación..."></textarea>
+      </div>
+    </form>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeCita()">Cancelar</button>
+      <button class="btn btn-danger btn-sm" id="delete-cita-btn" style="display:none" onclick="eliminarCita()">Eliminar</button>
+      <button class="btn btn-primary" id="save-cita-btn" onclick="guardarCita()">Guardar cita</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAuth(); setActiveNav("agenda"); renderSidebarMedico();
+  function logout() { clearSession(); window.location.href="/static/index.html"; }
+
+  let currentDate = new Date();
+  let selectedDate = new Date();
+  let citasDelMes = [];
+  let pacientesList = [];
+  let editingCitaId = null;
+
+  const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  async function init() {
+    pacientesList = await apiFetch("/api/pacientes/?limit=500");
+    const sel = document.getElementById("c-paciente");
+    pacientesList.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id; opt.textContent = p.nombre;
+      sel.appendChild(opt);
+    });
+    renderCalendar();
+    loadCitasDelDia(selectedDate);
+    if (new URLSearchParams(location.search).get("nueva") === "1") openNuevaCita();
+  }
+
+  function cambiarMes(dir) {
+    currentDate.setMonth(currentDate.getMonth() + dir);
+    renderCalendar();
+  }
+
+  async function renderCalendar() {
+    const año = currentDate.getFullYear();
+    const mes = currentDate.getMonth();
+    document.getElementById("mes-label").textContent = `${meses[mes]} ${año}`;
+
+    const inicio = new Date(año, mes, 1);
+    const fin = new Date(año, mes + 1, 0);
+    const primerDia = (inicio.getDay() + 6) % 7;
+
+    // Cargar citas del mes
+    const fechaStr = `${año}-${String(mes+1).padStart(2,"0")}-01`;
+    try {
+      citasDelMes = await apiFetch(`/api/citas/?fecha=${fechaStr}`);
+    } catch(e) { citasDelMes = []; }
+    // Obtener todos los días con citas
+    const diasConCitas = new Set(citasDelMes.map(c => new Date(c.fecha_hora).getDate()));
+
+    const grid = document.getElementById("calendar-grid");
+    grid.innerHTML = "";
+    const hoy = new Date();
+
+    // Relleno inicio
+    for (let i = 0; i < primerDia; i++) {
+      const prev = new Date(año, mes, -primerDia + i + 1);
+      const cell = document.createElement("div");
+      cell.className = "day-cell other-month";
+      cell.textContent = prev.getDate();
+      grid.appendChild(cell);
+    }
+    for (let d = 1; d <= fin.getDate(); d++) {
+      const cell = document.createElement("div");
+      cell.className = "day-cell";
+      cell.textContent = d;
+      const fecha = new Date(año, mes, d);
+      if (fecha.toDateString() === hoy.toDateString()) cell.classList.add("today");
+      if (fecha.toDateString() === selectedDate.toDateString()) cell.classList.add("selected");
+      if (diasConCitas.has(d)) cell.classList.add("has-citas");
+      cell.addEventListener("click", () => {
+        selectedDate = new Date(año, mes, d);
+        renderCalendar();
+        loadCitasDelDia(selectedDate);
+      });
+      grid.appendChild(cell);
+    }
+  }
+
+  async function loadCitasDelDia(fecha) {
+    const fechaStr = fecha.toISOString().split("T")[0];
+    document.getElementById("dia-titulo").textContent =
+      `Citas — ${fecha.toLocaleDateString("es-PE", { weekday:"long", day:"numeric", month:"long" })}`;
+    try {
+      const citas = await apiFetch(`/api/citas/?fecha=${fechaStr}`);
+      const container = document.getElementById("citas-dia");
+      if (!citas.length) {
+        container.innerHTML = `<div class="empty-state" style="padding:30px">
+          <div class="empty-icon" style="font-size:36px">📭</div>
+          <p>Sin citas para este día</p></div>`;
+        return;
+      }
+      container.innerHTML = `<div class="time-slots">` + citas.map(c => `
+        <div class="time-slot">
+          <div class="time-label">${new Date(c.fecha_hora).toLocaleTimeString("es-PE",{hour:"2-digit",minute:"2-digit"})}</div>
+          <div class="cita-block ${c.estado}" onclick="editarCita(${c.id})">
+            <div class="cita-paciente">${escapeHTML(c.paciente?.nombre || "Paciente")}</div>
+            <div class="cita-motivo">${escapeHTML(c.motivo || "Sin motivo")}</div>
+          </div>
+          ${estadoBadge(c.estado)}
+          <a href="consulta.html?cita=${c.id}&paciente_id=${c.paciente_id}&paciente_nombre=${encodeURIComponent(c.paciente?.nombre||'')}"
+             class="btn btn-primary btn-sm" title="Iniciar consulta">🎙️</a>
+        </div>`).join("") + `</div>`;
+    } catch(e) { toast("Error al cargar citas", "error"); }
+  }
+
+  function openNuevaCita() {
+    editingCitaId = null;
+    document.getElementById("cita-modal-title").textContent = "Nueva Cita";
+    document.getElementById("cita-form").reset();
+    document.getElementById("cita-id").value = "";
+    document.getElementById("delete-cita-btn").style.display = "none";
+    document.getElementById("c-estado-group").style.display = "none";
+    // Pre-llenar fecha seleccionada
+    const local = new Date(selectedDate.getTime() - selectedDate.getTimezoneOffset()*60000);
+    local.setHours(9, 0);
+    document.getElementById("c-fecha").value = local.toISOString().slice(0,16);
+    document.getElementById("modal-cita").classList.add("open");
+  }
+
+  async function editarCita(id) {
+    editingCitaId = id;
+    try {
+      const cita = await apiFetch(`/api/citas/${id}`);
+      document.getElementById("cita-modal-title").textContent = "Editar Cita";
+      document.getElementById("cita-id").value = id;
+      document.getElementById("c-paciente").value = cita.paciente_id;
+      const local = new Date(new Date(cita.fecha_hora).getTime() - new Date(cita.fecha_hora).getTimezoneOffset()*60000);
+      document.getElementById("c-fecha").value = local.toISOString().slice(0,16);
+      document.getElementById("c-motivo").value = cita.motivo || "";
+      document.getElementById("c-notas").value = cita.notas || "";
+      document.getElementById("c-estado").value = cita.estado;
+      document.getElementById("c-estado-group").style.display = "block";
+      document.getElementById("delete-cita-btn").style.display = "inline-flex";
+      document.getElementById("modal-cita").classList.add("open");
+    } catch(e) { toast("Error al cargar la cita", "error"); }
+  }
+
+  function closeCita() { document.getElementById("modal-cita").classList.remove("open"); }
+
+  async function guardarCita() {
+    const btn = document.getElementById("save-cita-btn");
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    const payload = {
+      paciente_id: parseInt(document.getElementById("c-paciente").value),
+      fecha_hora: document.getElementById("c-fecha").value,
+      motivo: document.getElementById("c-motivo").value || null,
+      notas: document.getElementById("c-notas").value || null,
+    };
+    try {
+      if (editingCitaId) {
+        payload.estado = document.getElementById("c-estado").value;
+        await apiFetch(`/api/citas/${editingCitaId}`, { method: "PUT", body: JSON.stringify(payload) });
+        toast("Cita actualizada", "success");
+      } else {
+        await apiFetch("/api/citas/", { method: "POST", body: JSON.stringify(payload) });
+        toast("Cita creada", "success");
+      }
+      closeCita(); renderCalendar(); loadCitasDelDia(selectedDate);
+    } catch(e) { toast(e.message, "error"); }
+    finally { btn.disabled = false; btn.textContent = "Guardar cita"; }
+  }
+
+  async function eliminarCita() {
+    if (!confirm("¿Eliminar esta cita?")) return;
+    try {
+      await apiFetch(`/api/citas/${editingCitaId}`, { method: "DELETE" });
+      toast("Cita eliminada", "success"); closeCita(); renderCalendar(); loadCitasDelDia(selectedDate);
+    } catch(e) { toast(e.message, "error"); }
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nueva Consulta — MediFlow</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .audio-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 40px; text-align: center;
+      transition: var(--transition); cursor: pointer;
+    }
+    .audio-zone:hover, .audio-zone.dragging { border-color: var(--cyan); background: var(--cyan-dim); }
+    .audio-zone .drop-icon { font-size: 48px; margin-bottom: 12px; }
+    .audio-zone p { color: var(--text-muted); margin: 8px 0; }
+    .recorder-section { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .recording-time { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--danger); }
+    .audio-preview { width: 100%; margin-top: 12px; }
+    audio { width: 100%; border-radius: var(--radius-sm); }
+    .transcripcion-box { min-height: 120px; }
+    .step-panel { display: none; }
+    .step-panel.active { display: block; animation: fadeIn 0.3s ease; }
+    .soap-S { --c: #0066cc; } .soap-O { --c: #008060; }
+    .soap-A { --c: #a05000; } .soap-P { --c: #7800a0; }
+    .soap-letter { color: var(--c, var(--cyan)); }
+    .ai-thinking {
+      display: flex; align-items: center; gap: 16px;
+      padding: 20px; background: var(--bg-dark); border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .thinking-dots span {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--cyan); margin: 0 2px;
+      animation: bounce 1.2s infinite;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-8px)} }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">MediFlow</div><div class="logo-sub">Sistema Clínico Inteligente</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Principal</div>
+      <a href="dashboard.html" class="nav-item" data-page="dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="pacientes.html" class="nav-item" data-page="pacientes"><span class="icon">👥</span> Pacientes</a>
+      <a href="agenda.html" class="nav-item" data-page="agenda"><span class="icon">📅</span> Agenda</a>
+      <div class="nav-section-title">Clínico</div>
+      <a href="consulta.html" class="nav-item" data-page="consulta"><span class="icon">🎙️</span> Nueva Consulta</a>
+      <a href="historial.html" class="nav-item" data-page="historial"><span class="icon">📋</span> Historial</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="medico-card" id="sidebar-medico"></div>
+      <button class="btn btn-ghost btn-sm full-width mt-2" onclick="logout()">⬅ Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-title">🎙️ Nueva Consulta con IA</div>
+      <div class="topbar-actions">
+        <span id="paciente-header" class="text-muted text-sm"></span>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <!-- Pipeline indicator -->
+      <div class="pipeline">
+        <div class="pipeline-step active" id="pstep-1">
+          <div class="step-num">1</div>
+          <div class="step-label">Audio</div>
+        </div>
+        <div class="step-connector" id="conn-1"></div>
+        <div class="pipeline-step" id="pstep-2">
+          <div class="step-num">2</div>
+          <div class="step-label">Transcripción</div>
+        </div>
+        <div class="step-connector" id="conn-2"></div>
+        <div class="pipeline-step" id="pstep-3">
+          <div class="step-num">3</div>
+          <div class="step-label">Motor IA</div>
+        </div>
+        <div class="step-connector" id="conn-3"></div>
+        <div class="pipeline-step" id="pstep-4">
+          <div class="step-num">4</div>
+          <div class="step-label">Editar & Guardar</div>
+        </div>
+      </div>
+
+      <!-- PASO 1: AUDIO -->
+      <div class="step-panel active card" id="panel-1">
+        <h3 class="card-title mb-4">Seleccionar paciente y capturar audio</h3>
+        <div class="form-row mb-4">
+          <div class="form-group">
+            <label>Paciente *</label>
+            <select id="sel-paciente" required>
+              <option value="">Seleccionar paciente...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Cita vinculada (opcional)</label>
+            <input type="text" id="cita-vinculada" placeholder="ID de cita" readonly style="opacity:0.6">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <!-- Subir archivo -->
+          <div>
+            <div class="audio-zone" id="drop-zone" onclick="document.getElementById('audio-input').click()">
+              <div class="drop-icon">📂</div>
+              <p><strong>Sube un archivo de audio</strong></p>
+              <p class="text-sm">MP3, WAV, M4A, OGG — Arrastra o haz clic</p>
+              <input type="file" id="audio-input" accept="audio/*" style="display:none">
+            </div>
+            <div id="file-preview" class="audio-preview hidden">
+              <audio id="audio-player" controls></audio>
+              <p class="text-sm text-muted mt-1" id="file-name"></p>
+            </div>
+          </div>
+
+          <!-- Grabar -->
+          <div class="recorder-section">
+            <p class="text-muted text-sm">— o graba directamente —</p>
+            <button class="record-btn" id="record-btn" onclick="toggleRecord()" title="Grabar consulta">🎙️</button>
+            <div id="recording-time" class="recording-time hidden">00:00</div>
+            <p class="text-sm text-muted" id="record-status">Presiona para grabar</p>
+            <div id="recorded-preview" class="audio-preview hidden">
+              <audio id="recorded-player" controls></audio>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-between mt-4">
+          <span class="text-muted text-sm" id="audio-ready-label"></span>
+          <button class="btn btn-primary" id="btn-transcribir" onclick="transcribir()" disabled>
+            🧠 Transcribir con Whisper →
+          </button>
+        </div>
+      </div>
+
+      <!-- PASO 2: TRANSCRIPCIÓN -->
+      <div class="step-panel card" id="panel-2">
+        <h3 class="card-title mb-4">Revisar y editar transcripción</h3>
+        <div class="progress-container" id="whisper-progress" style="display:none">
+          <div class="progress-label"><span>Transcribiendo audio con Whisper...</span><span id="progress-pct">—</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+        </div>
+        <div class="ai-thinking" id="whisper-thinking">
+          <span style="font-size:28px">🎙️</span>
+          <div>
+            <div class="font-bold">Whisper está transcribiendo...</div>
+            <div class="text-sm text-muted">Esto puede tomar un momento según la duración del audio</div>
+          </div>
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+        </div>
+        <div id="transcripcion-result" style="display:none">
+          <label>Texto transcrito (puedes editar antes de enviarlo a la IA):</label>
+          <textarea id="transcripcion-text" class="transcripcion-box" rows="7" placeholder="La transcripción aparecerá aquí..."></textarea>
+          <div class="flex justify-between mt-4">
+            <button class="btn btn-ghost" onclick="goToStep(1)">← Volver</button>
+            <button class="btn btn-primary" onclick="generarSOAP()">🤖 Analizar con Gemini →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 3: IA PROCESANDO -->
+      <div class="step-panel card" id="panel-3">
+        <h3 class="card-title mb-4">Motor IA generando historia clínica...</h3>
+        <div class="ai-thinking">
+          <span style="font-size:28px">🤖</span>
+          <div>
+            <div class="font-bold">Gemini está analizando la consulta</div>
+            <div class="text-sm text-muted">Estructurando en formato SOAP y extrayendo receta médica</div>
+          </div>
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+        </div>
+      </div>
+
+      <!-- PASO 4: EDITOR SOAP -->
+      <div class="step-panel card" id="panel-4">
+        <h3 class="card-title mb-4">Revisar y editar historia clínica</h3>
+        <div class="soap-grid">
+          <div class="soap-card soap-S">
+            <div class="soap-letter">S</div>
+            <div class="soap-card-title">Subjetivo — Síntomas del paciente</div>
+            <textarea id="soap-s" rows="5" placeholder="Lo que relata el paciente..."></textarea>
+          </div>
+          <div class="soap-card soap-O">
+            <div class="soap-letter">O</div>
+            <div class="soap-card-title">Objetivo — Observaciones clínicas</div>
+            <textarea id="soap-o" rows="5" placeholder="Signos vitales, exámenes físicos..."></textarea>
+          </div>
+          <div class="soap-card soap-A">
+            <div class="soap-letter">A</div>
+            <div class="soap-card-title">Análisis — Diagnóstico</div>
+            <textarea id="soap-a" rows="5" placeholder="Diagnóstico presuntivo o definitivo..."></textarea>
+          </div>
+          <div class="soap-card soap-P">
+            <div class="soap-letter">P</div>
+            <div class="soap-card-title">Plan — Tratamiento</div>
+            <textarea id="soap-p" rows="5" placeholder="Tratamiento, recomendaciones, citas..."></textarea>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- RECETA -->
+        <div class="flex justify-between items-center mb-4">
+          <h4 class="card-title">💊 Receta médica</h4>
+          <button class="btn btn-ghost btn-sm" onclick="agregarMedicamento()">➕ Agregar medicamento</button>
+        </div>
+        <div class="receta-list" id="receta-list"></div>
+
+        <div class="flex justify-between mt-4">
+          <button class="btn btn-ghost" onclick="goToStep(2)">← Volver</button>
+          <div class="flex gap-3">
+            <button class="btn btn-success" onclick="guardarHistoria(false)">💾 Guardar historia</button>
+            <button class="btn btn-primary" id="btn-save-pdf" onclick="guardarHistoria(true)">💾 Guardar + 📄 PDF</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO FINAL: ÉXITO -->
+      <div class="step-panel card" id="panel-5" style="text-align:center;padding:48px">
+        <div style="font-size:64px;margin-bottom:16px">✅</div>
+        <h2 class="card-title" style="font-size:24px;margin-bottom:8px">Historia guardada exitosamente</h2>
+        <p class="text-muted mb-4">La consulta ha sido almacenada en la base de datos.</p>
+        <div class="flex gap-3" style="justify-content:center">
+          <button class="btn btn-primary btn-lg" id="btn-download-pdf">📄 Descargar receta PDF</button>
+          <a href="pacientes.html" class="btn btn-ghost btn-lg">Ver pacientes</a>
+          <a href="consulta.html" class="btn btn-outline btn-lg">🎙️ Nueva consulta</a>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAuth(); setActiveNav("consulta"); renderSidebarMedico();
+  function logout() { clearSession(); window.location.href="/static/index.html"; }
+
+  // Params de URL
+  const params = new URLSearchParams(location.search);
+  const citaParam = params.get("cita");
+  const pacienteIdParam = params.get("paciente_id");
+  const pacienteNombreParam = params.get("paciente_nombre");
+  if (pacienteNombreParam) document.getElementById("paciente-header").textContent = `Paciente: ${decodeURIComponent(pacienteNombreParam)}`;
+  if (citaParam) document.getElementById("cita-vinculada").value = citaParam;
+
+  let audioBlob = null;
+  let mediaRecorder = null;
+  let recordingInterval = null;
+  let recordingSeconds = 0;
+  let currentStep = 1;
+  let savedHistoriaId = null;
+
+  // Cargar pacientes
+  async function loadPacientes() {
+    const lista = await apiFetch("/api/pacientes/?limit=500");
+    const sel = document.getElementById("sel-paciente");
+    lista.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id; opt.textContent = p.nombre;
+      if (String(p.id) === pacienteIdParam) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (pacienteIdParam) checkAudioReady();
+  }
+
+  // Drag & Drop
+  const dropZone = document.getElementById("drop-zone");
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragging"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragging"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault(); dropZone.classList.remove("dragging");
+    const file = e.dataTransfer.files[0];
+    if (file) setAudioFile(file);
+  });
+  document.getElementById("audio-input").addEventListener("change", e => {
+    if (e.target.files[0]) setAudioFile(e.target.files[0]);
+  });
+
+  function setAudioFile(file) {
+    audioBlob = file;
+    const url = URL.createObjectURL(file);
+    document.getElementById("audio-player").src = url;
+    document.getElementById("file-name").textContent = file.name;
+    document.getElementById("file-preview").classList.remove("hidden");
+    document.getElementById("recorded-preview").classList.add("hidden");
+    checkAudioReady();
+  }
+
+  // Grabación
+  async function toggleRecord() {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        audioBlob = new Blob(chunks, { type: "audio/webm" });
+        const url = URL.createObjectURL(audioBlob);
+        document.getElementById("recorded-player").src = url;
+        document.getElementById("recorded-preview").classList.remove("hidden");
+        document.getElementById("file-preview").classList.add("hidden");
+        document.getElementById("record-btn").classList.remove("recording");
+        document.getElementById("record-btn").textContent = "🎙️";
+        document.getElementById("record-status").textContent = "Grabación lista";
+        clearInterval(recordingInterval);
+        document.getElementById("recording-time").classList.add("hidden");
+        checkAudioReady();
+      };
+      mediaRecorder.start();
+      recordingSeconds = 0;
+      document.getElementById("record-btn").classList.add("recording");
+      document.getElementById("record-btn").textContent = "⏹";
+      document.getElementById("record-status").textContent = "Grabando... (clic para detener)";
+      document.getElementById("recording-time").classList.remove("hidden");
+      recordingInterval = setInterval(() => {
+        recordingSeconds++;
+        const m = String(Math.floor(recordingSeconds/60)).padStart(2,"0");
+        const s = String(recordingSeconds%60).padStart(2,"0");
+        document.getElementById("recording-time").textContent = `${m}:${s}`;
+      }, 1000);
+    } catch(e) { toast("No se pudo acceder al micrófono: " + e.message, "error"); }
+  }
+
+  function checkAudioReady() {
+    const hasPaciente = document.getElementById("sel-paciente").value;
+    const hasAudio = !!audioBlob;
+    document.getElementById("btn-transcribir").disabled = !(hasPaciente && hasAudio);
+    if (hasPaciente && hasAudio)
+      document.getElementById("audio-ready-label").textContent = "✅ Listo para transcribir";
+  }
+  document.getElementById("sel-paciente").addEventListener("change", checkAudioReady);
+
+  function goToStep(n) {
+    document.querySelectorAll(".step-panel").forEach(p => p.classList.remove("active"));
+    document.getElementById(`panel-${n}`).classList.add("active");
+    for (let i = 1; i <= 4; i++) {
+      const step = document.getElementById(`pstep-${i}`);
+      step.classList.toggle("active", i === n);
+      step.classList.toggle("done", i < n);
+      if (i < 4) document.getElementById(`conn-${i}`).classList.toggle("done", i < n);
+    }
+    currentStep = n;
+  }
+
+  async function transcribir() {
+    const pacienteId = document.getElementById("sel-paciente").value;
+    if (!pacienteId) { toast("Selecciona un paciente", "error"); return; }
+    if (!audioBlob) { toast("Selecciona o graba un audio", "error"); return; }
+
+    goToStep(2);
+    document.getElementById("whisper-thinking").style.display = "flex";
+    document.getElementById("transcripcion-result").style.display = "none";
+
+    // Simular progreso visual
+    let pct = 0;
+    const interval = setInterval(() => {
+      pct = Math.min(pct + Math.random() * 12, 90);
+      document.getElementById("progress-fill").style.width = pct + "%";
+    }, 800);
+
+    try {
+      const form = new FormData();
+      const filename = audioBlob.name || "grabacion.webm";
+      form.append("audio", audioBlob, filename);
+      const data = await apiFetch("/api/consultas/transcribir", { method: "POST", body: form });
+      clearInterval(interval);
+      document.getElementById("progress-fill").style.width = "100%";
+      document.getElementById("transcripcion-text").value = data.transcripcion;
+      document.getElementById("whisper-thinking").style.display = "none";
+      document.getElementById("transcripcion-result").style.display = "block";
+      goToStep(2);
+    } catch(e) {
+      clearInterval(interval);
+      toast("Error en transcripción: " + e.message, "error");
+      goToStep(1);
+    }
+  }
+
+  async function generarSOAP() {
+    const texto = document.getElementById("transcripcion-text").value.trim();
+    if (!texto) { toast("La transcripción está vacía", "error"); return; }
+    goToStep(3);
+    try {
+      const data = await apiFetch("/api/consultas/generar-soap", {
+        method: "POST",
+        body: JSON.stringify({ transcripcion: texto })
+      });
+      document.getElementById("soap-s").value = data.s_subjetivo;
+      document.getElementById("soap-o").value = data.o_objetivo;
+      document.getElementById("soap-a").value = data.a_analisis;
+      document.getElementById("soap-p").value = data.p_plan;
+
+      // Renderizar receta
+      const recetaList = document.getElementById("receta-list");
+      recetaList.innerHTML = "";
+      (data.receta || []).forEach(m => agregarMedicamento(m));
+
+      goToStep(4);
+    } catch(e) {
+      toast("Error en el motor IA: " + e.message, "error");
+      goToStep(2);
+    }
+  }
+
+  function agregarMedicamento(med = {}) {
+    const list = document.getElementById("receta-list");
+    const item = document.createElement("div");
+    item.className = "receta-item";
+    item.innerHTML = `
+      <input type="text" placeholder="Medicamento" value="${escapeHTML(med.medicamento)}" class="r-med">
+      <input type="text" placeholder="Dosis" value="${escapeHTML(med.dosis)}" class="r-dosis">
+      <input type="text" placeholder="Frecuencia" value="${escapeHTML(med.frecuencia)}" class="r-freq">
+      <input type="text" placeholder="Duración" value="${escapeHTML(med.duracion)}" class="r-dur">
+      <button class="btn btn-danger btn-sm" onclick="this.parentElement.remove()" title="Eliminar">✕</button>`;
+    list.appendChild(item);
+  }
+
+  function getReceta() {
+    return Array.from(document.querySelectorAll(".receta-item")).map(item => ({
+      medicamento: item.querySelector(".r-med").value,
+      dosis: item.querySelector(".r-dosis").value,
+      frecuencia: item.querySelector(".r-freq").value,
+      duracion: item.querySelector(".r-dur").value,
+    })).filter(m => m.medicamento);
+  }
+
+  async function guardarHistoria(generarPDF) {
+    const btn = generarPDF ? document.getElementById("btn-save-pdf") : document.querySelector(".btn-success");
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    const form = new FormData();
+    form.append("paciente_id", document.getElementById("sel-paciente").value);
+    if (citaParam) form.append("cita_id", citaParam);
+    form.append("transcripcion", document.getElementById("transcripcion-text").value);
+    form.append("s_subjetivo", document.getElementById("soap-s").value);
+    form.append("o_objetivo", document.getElementById("soap-o").value);
+    form.append("a_analisis", document.getElementById("soap-a").value);
+    form.append("p_plan", document.getElementById("soap-p").value);
+    form.append("receta_json", JSON.stringify(getReceta()));
+    try {
+      const historia = await apiFetch("/api/consultas/", { method: "POST", body: form });
+      savedHistoriaId = historia.id;
+      goToStep(5);
+      document.getElementById("btn-download-pdf").onclick = () => openAuthenticatedPdf(savedHistoriaId);
+      if (generarPDF) {
+        setTimeout(() => openAuthenticatedPdf(savedHistoriaId), 500);
+      }
+      toast("Historia guardada exitosamente", "success");
+    } catch(e) {
+      toast(e.message, "error");
+      btn.disabled = false;
+      btn.textContent = generarPDF ? "💾 Guardar + 📄 PDF" : "💾 Guardar historia";
+    }
+  }
+
+  loadPacientes();
+</script>
+</body>
+</html>

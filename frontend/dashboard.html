@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — MediFlow</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">MediFlow</div>
+      <div class="logo-sub">Sistema Clínico Inteligente</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Principal</div>
+      <a href="dashboard.html" class="nav-item" data-page="dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="pacientes.html" class="nav-item" data-page="pacientes"><span class="icon">👥</span> Pacientes</a>
+      <a href="agenda.html" class="nav-item" data-page="agenda"><span class="icon">📅</span> Agenda</a>
+      <div class="nav-section-title">Clínico</div>
+      <a href="consulta.html" class="nav-item" data-page="consulta"><span class="icon">🎙️</span> Nueva Consulta</a>
+      <a href="historial.html" class="nav-item" data-page="historial"><span class="icon">📋</span> Historial</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="medico-card" id="sidebar-medico"></div>
+      <button class="btn btn-ghost btn-sm full-width mt-2" id="logout-btn" onclick="logout()">⬅ Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-title" id="greeting">Buenos días 👋</div>
+      <div class="topbar-actions">
+        <a href="consulta.html" class="btn btn-primary btn-sm">🎙️ Nueva consulta</a>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card" style="--accent:#00d4ff">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value" id="stat-pacientes">—</div>
+          <div class="stat-label">Pacientes registrados</div>
+        </div>
+        <div class="stat-card" style="--accent:#ffb347">
+          <div class="stat-icon">📅</div>
+          <div class="stat-value" id="stat-hoy">—</div>
+          <div class="stat-label">Citas hoy</div>
+        </div>
+        <div class="stat-card" style="--accent:#00e5a0">
+          <div class="stat-icon">📋</div>
+          <div class="stat-value" id="stat-mes">—</div>
+          <div class="stat-label">Consultas este mes</div>
+        </div>
+        <div class="stat-card" style="--accent:#ff4d6d">
+          <div class="stat-icon">⏳</div>
+          <div class="stat-value" id="stat-pendientes">—</div>
+          <div class="stat-label">Citas pendientes</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Próximas citas -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">📅 Citas de hoy</h2>
+            <a href="agenda.html" class="btn btn-ghost btn-sm">Ver agenda</a>
+          </div>
+          <div id="proximas-container">
+            <div class="empty-state" style="padding:30px">
+              <div class="spinner" style="margin: 0 auto 12px"></div>
+              <p>Cargando...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accesos rápidos -->
+        <div class="card">
+          <div class="card-header"><h2 class="card-title">⚡ Accesos rápidos</h2></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <a href="consulta.html" class="btn btn-outline" style="justify-content:flex-start">
+              🎙️ &nbsp; Iniciar consulta con IA
+            </a>
+            <a href="pacientes.html?nuevo=1" class="btn btn-ghost" style="justify-content:flex-start">
+              ➕ &nbsp; Registrar nuevo paciente
+            </a>
+            <a href="agenda.html?nueva=1" class="btn btn-ghost" style="justify-content:flex-start">
+              📅 &nbsp; Agendar nueva cita
+            </a>
+            <a href="historial.html" class="btn btn-ghost" style="justify-content:flex-start">
+              📋 &nbsp; Ver historial clínico
+            </a>
+          </div>
+          <div class="divider"></div>
+          <div>
+            <div class="text-sm text-muted mb-4">Estado del sistema</div>
+            <div class="flex items-center gap-2">
+              <span style="color:var(--success);font-size:20px">●</span>
+              <span class="text-sm">API MediFlow — En línea</span>
+            </div>
+            <div class="flex items-center gap-2 mt-1" id="ia-status">
+              <span style="color:var(--warning);font-size:20px">●</span>
+              <span class="text-sm">Motor IA — Verificando...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAuth();
+  setActiveNav("dashboard");
+  renderSidebarMedico();
+
+  const medico = getMedico();
+  const hora = new Date().getHours();
+  const saludo = hora < 12 ? "Buenos días" : hora < 18 ? "Buenas tardes" : "Buenas noches";
+  document.getElementById("greeting").textContent = `${saludo}, Dr. ${medico?.nombre?.split(" ")[0] || ""} 👋`;
+
+  function logout() { clearSession(); window.location.href = "/static/index.html"; }
+
+  async function loadDashboard() {
+    try {
+      const data = await apiFetch("/api/citas/stats/dashboard");
+      document.getElementById("stat-pacientes").textContent = data.pacientes_total;
+      document.getElementById("stat-hoy").textContent = data.citas_hoy;
+      document.getElementById("stat-mes").textContent = data.consultas_mes;
+      document.getElementById("stat-pendientes").textContent = data.citas_pendientes;
+      document.getElementById("ia-status").innerHTML = `
+        <span style="color:var(--success);font-size:20px">●</span>
+        <span class="text-sm">Motor IA — Activo</span>`;
+
+      const container = document.getElementById("proximas-container");
+      if (!data.proximas_citas?.length) {
+        container.innerHTML = `<div class="empty-state" style="padding:30px">
+          <div class="empty-icon" style="font-size:36px">📭</div>
+          <p>Sin citas programadas para hoy</p>
+        </div>`;
+        return;
+      }
+      container.innerHTML = data.proximas_citas.map(c => `
+        <div class="time-slot">
+          <div class="time-label">${escapeHTML(c.hora)}</div>
+          <a href="consulta.html?cita=${c.id}&paciente=${encodeURIComponent(c.paciente_nombre)}" class="cita-block ${c.estado}">
+            <div class="cita-paciente">${escapeHTML(c.paciente_nombre)}</div>
+            <div class="cita-motivo">${escapeHTML(c.motivo || "Sin motivo especificado")}</div>
+          </a>
+          ${estadoBadge(c.estado)}
+        </div>
+      `).join("");
+    } catch (e) {
+      toast("Error al cargar el dashboard", "error");
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

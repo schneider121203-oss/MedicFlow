@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Historial Clínico — MediFlow</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .historia-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 12px;
+      cursor: pointer; transition: var(--transition);
+    }
+    .historia-card:hover { border-color: var(--border-hover); transform: translateX(4px); }
+    .historia-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .historia-diagnostico { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .historia-meta { font-size: 12px; color: var(--text-muted); }
+    .historia-preview { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+    .soap-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+    .soap-detail-item { background: var(--bg-dark); border-radius: var(--radius-sm); padding: 14px; }
+    .soap-detail-item .letter { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+    .soap-detail-item p { font-size: 13px; line-height: 1.7; }
+    .med-pill {
+      display: inline-block; padding: 4px 12px; margin: 4px;
+      background: var(--cyan-dim); border: 1px solid var(--border);
+      border-radius: 20px; font-size: 12px; color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">MediFlow</div><div class="logo-sub">Sistema Clínico Inteligente</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Principal</div>
+      <a href="dashboard.html" class="nav-item" data-page="dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="pacientes.html" class="nav-item" data-page="pacientes"><span class="icon">👥</span> Pacientes</a>
+      <a href="agenda.html" class="nav-item" data-page="agenda"><span class="icon">📅</span> Agenda</a>
+      <div class="nav-section-title">Clínico</div>
+      <a href="consulta.html" class="nav-item" data-page="consulta"><span class="icon">🎙️</span> Nueva Consulta</a>
+      <a href="historial.html" class="nav-item" data-page="historial"><span class="icon">📋</span> Historial</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="medico-card" id="sidebar-medico"></div>
+      <button class="btn btn-ghost btn-sm full-width mt-2" onclick="logout()">⬅ Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-title">📋 Historial Clínico</div>
+      <div class="topbar-actions">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-hist" placeholder="Buscar diagnóstico o paciente...">
+        </div>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <div id="historial-list">
+        <div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><p>Cargando historial...</p></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- MODAL DETALLE -->
+<div class="modal-overlay" id="modal-historia">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="hist-paciente-nombre">Historia Clínica</h2>
+      <button class="modal-close" onclick="closeHistoria()">✕</button>
+    </div>
+    <div id="historia-detail"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeHistoria()">Cerrar</button>
+      <button class="btn btn-outline" id="hist-pdf-btn">📄 Descargar PDF</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAuth(); setActiveNav("historial"); renderSidebarMedico();
+  function logout() { clearSession(); window.location.href="/static/index.html"; }
+
+  let historias = [];
+
+  async function loadHistorial() {
+    historias = await apiFetch("/api/consultas/");
+    renderHistorial(historias);
+  }
+
+  function renderHistorial(list) {
+    const container = document.getElementById("historial-list");
+    if (!list.length) {
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <h3>Sin consultas registradas</h3>
+        <p>Inicia una consulta con IA para ver el historial aquí</p>
+        <a href="consulta.html" class="btn btn-primary mt-4">🎙️ Nueva consulta</a>
+      </div>`;
+      return;
+    }
+    container.innerHTML = list.map(h => `
+      <div class="historia-card" onclick="verHistoria(${h.id})">
+        <div class="historia-header">
+          <div>
+            <div class="historia-diagnostico">${escapeHTML(h.a_analisis || "Sin diagnóstico")}</div>
+            <div class="historia-meta">
+              👤 ${escapeHTML(h.paciente?.nombre || "Paciente")} &nbsp;·&nbsp;
+              📅 ${formatDateTime(h.created_at)}
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" class="btn btn-ghost btn-sm"
+               onclick="event.stopPropagation();openAuthenticatedPdf(${h.id})">📄 PDF</button>
+          </div>
+        </div>
+        <div class="historia-preview">
+          ${escapeHTML(h.p_plan ? h.p_plan.substring(0, 120) + "..." : "Sin plan registrado")}
+        </div>
+        ${h.receta?.length ? `<div class="mt-2">
+          ${h.receta.map(m => `<span class="med-pill">💊 ${escapeHTML(m.medicamento)}</span>`).join("")}
+        </div>` : ""}
+      </div>`).join("");
+  }
+
+  let searchTimer;
+  document.getElementById("search-hist").addEventListener("input", e => {
+    clearTimeout(searchTimer);
+    const q = e.target.value.toLowerCase();
+    searchTimer = setTimeout(() => {
+      const filtered = historias.filter(h =>
+        (h.a_analisis || "").toLowerCase().includes(q) ||
+        (h.paciente?.nombre || "").toLowerCase().includes(q) ||
+        (h.p_plan || "").toLowerCase().includes(q)
+      );
+      renderHistorial(filtered);
+    }, 300);
+  });
+
+  async function verHistoria(id) {
+    const h = historias.find(x => x.id === id);
+    if (!h) return;
+    document.getElementById("hist-paciente-nombre").textContent = `${h.paciente?.nombre || "Paciente"} — ${formatDate(h.created_at)}`;
+    document.getElementById("hist-pdf-btn").onclick = () => openAuthenticatedPdf(h.id);
+
+    const recetaHTML = h.receta?.length
+      ? `<div><h4 style="margin-bottom:10px">💊 Medicamentos recetados</h4>
+          ${h.receta.map(m => `
+            <div style="background:var(--bg-dark);border:1px solid var(--border);border-left:3px solid var(--cyan);
+                         border-radius:var(--radius-sm);padding:12px;margin-bottom:8px">
+              <strong>${escapeHTML(m.medicamento.toUpperCase())} — ${escapeHTML(m.dosis)}</strong><br>
+              <span class="text-muted text-sm">Tomar ${escapeHTML(m.frecuencia)} durante ${escapeHTML(m.duracion)}</span>
+            </div>`).join("")}
+        </div>`
+      : `<p class="text-muted text-sm">No se recetaron medicamentos en esta consulta.</p>`;
+
+    document.getElementById("historia-detail").innerHTML = `
+      <div class="soap-detail">
+        <div class="soap-detail-item">
+          <div class="letter text-cyan">S</div>
+          <div class="soap-card-title">Subjetivo</div>
+          <p>${escapeHTML(h.s_subjetivo || "—")}</p>
+        </div>
+        <div class="soap-detail-item">
+          <div class="letter" style="color:var(--success)">O</div>
+          <div class="soap-card-title">Objetivo</div>
+          <p>${escapeHTML(h.o_objetivo || "—")}</p>
+        </div>
+        <div class="soap-detail-item">
+          <div class="letter" style="color:var(--warning)">A</div>
+          <div class="soap-card-title">Análisis</div>
+          <p>${escapeHTML(h.a_analisis || "—")}</p>
+        </div>
+        <div class="soap-detail-item">
+          <div class="letter" style="color:#a020f0">P</div>
+          <div class="soap-card-title">Plan</div>
+          <p>${escapeHTML(h.p_plan || "—")}</p>
+        </div>
+      </div>
+      <div class="divider"></div>
+      ${recetaHTML}
+      ${h.transcripcion ? `
+        <div class="divider"></div>
+        <details>
+          <summary class="text-sm text-muted" style="cursor:pointer">🎙️ Ver transcripción original</summary>
+          <div style="background:var(--bg-dark);border-radius:var(--radius-sm);padding:14px;margin-top:10px;font-size:13px;line-height:1.7;color:var(--text-muted)">
+            ${escapeHTML(h.transcripcion)}
+          </div>
+        </details>` : ""}`;
+
+    document.getElementById("modal-historia").classList.add("open");
+  }
+  function closeHistoria() { document.getElementById("modal-historia").classList.remove("open"); }
+
+  loadHistorial();
+</script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediFlow — Acceso</title>
+  <meta name="description" content="Sistema de gestión clínica inteligente con IA para médicos">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .tab-btns { display: flex; gap: 0; margin-bottom: 28px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+    .tab-btn { flex: 1; padding: 10px; background: transparent; border: none; color: var(--text-muted); font-weight: 600; font-size: 14px; transition: var(--transition); }
+    .tab-btn.active { background: var(--cyan-dim); color: var(--cyan); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .particles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+    .particle {
+      position: absolute; width: 2px; height: 2px; border-radius: 50%;
+      background: var(--cyan); opacity: 0;
+      animation: float-up var(--dur, 8s) var(--delay, 0s) infinite;
+    }
+    @keyframes float-up {
+      0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+      10% { opacity: 0.6; }
+      90% { opacity: 0.3; }
+      100% { transform: translateY(-10vh) translateX(var(--dx, 0)); opacity: 0; }
+    }
+    .login-card { position: relative; z-index: 1; }
+  </style>
+</head>
+<body>
+  <div class="particles" id="particles"></div>
+
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="big-logo">MediFlow</div>
+        <p>Sistema de Gestión Clínica Inteligente</p>
+      </div>
+
+      <!-- LOGIN -->
+      <div class="tab-content active" id="content-login">
+        <form id="login-form">
+          <div class="form-group">
+            <label>Correo electrónico</label>
+            <input type="email" id="login-email" placeholder="doctor@clinica.com" required>
+          </div>
+          <div class="form-group">
+            <label>Contraseña</label>
+            <input type="password" id="login-pass" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="btn btn-primary full-width btn-lg" id="login-btn">
+            Entrar al sistema
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    // Partículas decorativas
+    const pc = document.getElementById("particles");
+    for (let i = 0; i < 30; i++) {
+      const p = document.createElement("div");
+      p.className = "particle";
+      p.style.left = `${Math.random() * 100}%`;
+      p.style.setProperty("--dur", `${6 + Math.random() * 8}s`);
+      p.style.setProperty("--delay", `${Math.random() * 8}s`);
+      p.style.setProperty("--dx", `${(Math.random() - 0.5) * 100}px`);
+      p.style.opacity = 0.3 + Math.random() * 0.4;
+      pc.appendChild(p);
+    }
+
+    // Si ya hay sesión, redirigir
+    if (getToken()) window.location.href = "/static/dashboard.html";
+
+    document.getElementById("login-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const btn = document.getElementById("login-btn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Entrando...';
+      try {
+        const data = await apiFetch("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ email: document.getElementById("login-email").value, password: document.getElementById("login-pass").value })
+        });
+        setSession(data.access_token, data.medico);
+        window.location.href = "/static/dashboard.html";
+      } catch (err) {
+        toast(err.message, "error");
+        btn.disabled = false;
+        btn.textContent = "Entrar al sistema";
+      }
+    });
+
+  </script>
+</body>
+</html>

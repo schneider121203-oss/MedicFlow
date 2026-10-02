@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pacientes — MediFlow</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-text">MediFlow</div><div class="logo-sub">Sistema Clínico Inteligente</div></div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Principal</div>
+      <a href="dashboard.html" class="nav-item" data-page="dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="pacientes.html" class="nav-item" data-page="pacientes"><span class="icon">👥</span> Pacientes</a>
+      <a href="agenda.html" class="nav-item" data-page="agenda"><span class="icon">📅</span> Agenda</a>
+      <div class="nav-section-title">Clínico</div>
+      <a href="consulta.html" class="nav-item" data-page="consulta"><span class="icon">🎙️</span> Nueva Consulta</a>
+      <a href="historial.html" class="nav-item" data-page="historial"><span class="icon">📋</span> Historial</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="medico-card" id="sidebar-medico"></div>
+      <button class="btn btn-ghost btn-sm full-width mt-2" onclick="logout()">⬅ Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-title">👥 Pacientes</div>
+      <div class="topbar-actions">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" placeholder="Buscar paciente...">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openModal()">➕ Nuevo paciente</button>
+      </div>
+    </header>
+
+    <main class="page-body">
+      <div class="card">
+        <div class="table-wrapper">
+          <table id="pacientes-table">
+            <thead><tr>
+              <th>Paciente</th><th>Documento</th><th>Teléfono</th>
+              <th>Tipo sangre</th><th>Alergias</th><th>Registrado</th><th>Acciones</th>
+            </tr></thead>
+            <tbody id="pacientes-body">
+              <tr><td colspan="7" style="text-align:center;padding:40px">
+                <span class="spinner"></span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- MODAL PACIENTE -->
+<div class="modal-overlay" id="modal-paciente">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-title">Nuevo Paciente</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <form id="paciente-form">
+      <input type="hidden" id="paciente-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nombre completo *</label>
+          <input type="text" id="p-nombre" required placeholder="Sebastián Flores García">
+        </div>
+        <div class="form-group">
+          <label>DNI / RUT / Pasaporte</label>
+          <input type="text" id="p-documento" placeholder="12345678">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Fecha de nacimiento</label>
+          <input type="date" id="p-nacimiento">
+        </div>
+        <div class="form-group">
+          <label>Sexo</label>
+          <select id="p-sexo">
+            <option value="">Seleccionar</option>
+            <option value="masculino">Masculino</option>
+            <option value="femenino">Femenino</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tipo de sangre</label>
+          <select id="p-sangre">
+            <option value="">Desconocido</option>
+            <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+            <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="tel" id="p-telefono" placeholder="+51 999 999 999">
+        </div>
+        <div class="form-group">
+          <label>Correo electrónico</label>
+          <input type="email" id="p-email" placeholder="paciente@email.com">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Dirección</label>
+        <input type="text" id="p-direccion" placeholder="Av. Ejemplo 123, Lima">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Alergias conocidas</label>
+          <textarea id="p-alergias" placeholder="Penicilina, mariscos..." rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Enfermedades crónicas</label>
+          <textarea id="p-cronicas" placeholder="Diabetes tipo 2, HTA..." rows="2"></textarea>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notas generales</label>
+        <textarea id="p-notas" placeholder="Observaciones adicionales..." rows="2"></textarea>
+      </div>
+    </form>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="save-btn" onclick="guardarPaciente()">Guardar paciente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PERFIL -->
+<div class="modal-overlay" id="modal-perfil">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h2 class="modal-title" id="perfil-nombre">Perfil del Paciente</h2>
+      <button class="modal-close" onclick="closePerfil()">✕</button>
+    </div>
+    <div id="perfil-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePerfil()">Cerrar</button>
+      <button class="btn btn-outline" id="perfil-editar">✏️ Editar</button>
+      <a class="btn btn-primary" id="perfil-consulta" href="#">🎙️ Iniciar consulta</a>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+  requireAuth(); setActiveNav("pacientes"); renderSidebarMedico();
+  function logout() { clearSession(); window.location.href="/static/index.html"; }
+
+  let pacientes = [];
+
+  async function loadPacientes(buscar = "") {
+    const url = buscar ? `/api/pacientes/?buscar=${encodeURIComponent(buscar)}` : "/api/pacientes/";
+    pacientes = await apiFetch(url);
+    renderTable(pacientes);
+  }
+
+  function renderTable(list) {
+    const tbody = document.getElementById("pacientes-body");
+    if (!list.length) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+        <div class="empty-icon">👥</div>
+        <h3>Sin pacientes</h3><p>Agrega tu primer paciente para comenzar</p>
+      </div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = list.map(p => `
+      <tr style="cursor:pointer" onclick="verPerfil(${p.id})">
+        <td><strong>${escapeHTML(p.nombre)}</strong><br><span class="text-muted text-sm">${escapeHTML(p.email)}</span></td>
+        <td>${escapeHTML(p.documento || "—")}</td>
+        <td>${escapeHTML(p.telefono || "—")}</td>
+        <td>${p.tipo_sangre ? `<span class="badge badge-danger">${escapeHTML(p.tipo_sangre)}</span>` : "—"}</td>
+        <td class="text-sm text-muted">${escapeHTML(p.alergias ? p.alergias.substring(0,30)+"..." : "—")}</td>
+        <td class="text-sm text-muted">${formatDate(p.created_at)}</td>
+        <td>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();editarPaciente(${p.id})">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();eliminarPaciente(${p.id})">🗑️</button>
+          </div>
+        </td>
+      </tr>`).join("");
+  }
+
+  let debounceTimer;
+  document.getElementById("search-input").addEventListener("input", e => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => loadPacientes(e.target.value), 350);
+  });
+
+  function openModal(reset=true) {
+    if (reset) {
+      document.getElementById("modal-title").textContent = "Nuevo Paciente";
+      document.getElementById("paciente-form").reset();
+      document.getElementById("paciente-id").value = "";
+    }
+    document.getElementById("modal-paciente").classList.add("open");
+  }
+  function closeModal() { document.getElementById("modal-paciente").classList.remove("open"); }
+
+  function editarPaciente(id) {
+    const p = pacientes.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById("modal-title").textContent = "Editar Paciente";
+    document.getElementById("paciente-id").value = p.id;
+    document.getElementById("p-nombre").value = p.nombre || "";
+    document.getElementById("p-documento").value = p.documento || "";
+    document.getElementById("p-nacimiento").value = p.fecha_nacimiento || "";
+    document.getElementById("p-sexo").value = p.sexo || "";
+    document.getElementById("p-sangre").value = p.tipo_sangre || "";
+    document.getElementById("p-telefono").value = p.telefono || "";
+    document.getElementById("p-email").value = p.email || "";
+    document.getElementById("p-direccion").value = p.direccion || "";
+    document.getElementById("p-alergias").value = p.alergias || "";
+    document.getElementById("p-cronicas").value = p.enfermedades_cronicas || "";
+    document.getElementById("p-notas").value = p.notas_generales || "";
+    openModal(false);
+  }
+
+  async function guardarPaciente() {
+    const id = document.getElementById("paciente-id").value;
+    const btn = document.getElementById("save-btn");
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    const payload = {
+      nombre: document.getElementById("p-nombre").value,
+      documento: document.getElementById("p-documento").value || null,
+      fecha_nacimiento: document.getElementById("p-nacimiento").value || null,
+      sexo: document.getElementById("p-sexo").value || null,
+      tipo_sangre: document.getElementById("p-sangre").value || null,
+      telefono: document.getElementById("p-telefono").value || null,
+      email: document.getElementById("p-email").value || null,
+      direccion: document.getElementById("p-direccion").value || null,
+      alergias: document.getElementById("p-alergias").value || null,
+      enfermedades_cronicas: document.getElementById("p-cronicas").value || null,
+      notas_generales: document.getElementById("p-notas").value || null,
+    };
+    try {
+      if (id) {
+        await apiFetch(`/api/pacientes/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+        toast("Paciente actualizado", "success");
+      } else {
+        await apiFetch("/api/pacientes/", { method: "POST", body: JSON.stringify(payload) });
+        toast("Paciente registrado", "success");
+      }
+      closeModal(); loadPacientes();
+    } catch(e) { toast(e.message, "error"); }
+    finally { btn.disabled = false; btn.textContent = "Guardar paciente"; }
+  }
+
+  async function eliminarPaciente(id) {
+    const paciente = pacientes.find(p => p.id === id);
+    if (!paciente || !confirm(`¿Archivar a ${paciente.nombre}?`)) return;
+    try {
+      await apiFetch(`/api/pacientes/${id}`, { method: "DELETE" });
+      toast("Paciente eliminado", "success"); loadPacientes();
+    } catch(e) { toast(e.message, "error"); }
+  }
+
+  async function verPerfil(id) {
+    const p = pacientes.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById("perfil-nombre").textContent = p.nombre;
+    document.getElementById("perfil-consulta").href = `consulta.html?paciente_id=${p.id}&paciente_nombre=${encodeURIComponent(p.nombre)}`;
+    document.getElementById("perfil-editar").onclick = () => { closePerfil(); editarPaciente(id); };
+
+    // Cargar historias
+    let historiasHTML = `<div class="spinner" style="margin:20px auto;display:block"></div>`;
+    document.getElementById("perfil-body").innerHTML = `
+      <div class="grid-2 mb-4">
+        <div><span class="text-muted text-sm">Documento:</span><br><strong>${escapeHTML(p.documento || "—")}</strong></div>
+        <div><span class="text-muted text-sm">Tipo sangre:</span><br><strong>${p.tipo_sangre ? `<span class="badge badge-danger">${escapeHTML(p.tipo_sangre)}</span>` : "—"}</strong></div>
+        <div><span class="text-muted text-sm">Teléfono:</span><br><strong>${escapeHTML(p.telefono || "—")}</strong></div>
+        <div><span class="text-muted text-sm">Sexo:</span><br><strong>${escapeHTML(p.sexo || "—")}</strong></div>
+      </div>
+      ${p.alergias ? `<div class="mb-4"><span class="text-muted text-sm">⚠️ Alergias:</span><br><span class="text-danger">${escapeHTML(p.alergias)}</span></div>` : ""}
+      ${p.enfermedades_cronicas ? `<div class="mb-4"><span class="text-muted text-sm">🏥 Enfermedades crónicas:</span><br>${escapeHTML(p.enfermedades_cronicas)}</div>` : ""}
+      <div class="divider"></div>
+      <div class="card-title mb-4">📋 Historial de consultas</div>
+      <div id="historias-perfil">${historiasHTML}</div>`;
+    document.getElementById("modal-perfil").classList.add("open");
+
+    try {
+      const historias = await apiFetch(`/api/pacientes/${id}/historias`);
+      const hel = document.getElementById("historias-perfil");
+      if (!historias.length) { hel.innerHTML = `<p class="text-muted text-sm">Sin consultas registradas aún.</p>`; return; }
+      hel.innerHTML = historias.map(h => `
+        <div class="soap-card mb-4" style="padding:14px">
+          <div class="flex justify-between items-center mb-4">
+            <span class="text-sm font-bold">${formatDate(h.created_at)}</span>
+            <button type="button" onclick="openAuthenticatedPdf(${h.id})" class="btn btn-ghost btn-sm">📄 PDF</button>
+          </div>
+          <div class="text-sm text-muted"><strong>Diagnóstico:</strong> ${escapeHTML(h.a_analisis || "—")}</div>
+          <div class="text-sm text-muted mt-1"><strong>Plan:</strong> ${escapeHTML(h.p_plan || "—")}</div>
+        </div>`).join("");
+    } catch(e) { document.getElementById("historias-perfil").innerHTML = `<p class="text-danger text-sm">Error al cargar historial</p>`; }
+  }
+  function closePerfil() { document.getElementById("modal-perfil").classList.remove("open"); }
+
+  // Auto abrir modal si viene con ?nuevo=1
+  if (new URLSearchParams(location.search).get("nuevo") === "1") openModal();
+
+  loadPacientes();
+</script>
+</body>
+</html>
